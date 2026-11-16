@@ -285,7 +285,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9eea094d5b3e8d84b99ab6a69df6fea0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhotoBooth
-  showOperatorControls: 1
+  showOperatorControls: 0
   sessionTimeoutSeconds: 120
 --- !u!4 &606844522
 Transform:

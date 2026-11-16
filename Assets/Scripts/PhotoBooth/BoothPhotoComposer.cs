@@ -32,7 +32,7 @@ public static class BoothPhotoComposer
     {
         if (FrameArtworks[frameIndex] == null)
         {
-            string resourcePath = frameIndex == 1 ? "PhotoBooth/NewspaperFrame" : "PhotoBooth/BotanicalFrame";
+            string resourcePath = frameIndex == 1 ? "Frames/NewspaperFrame" : "Frames/BotanicalFrame";
             FrameArtworks[frameIndex] = Resources.Load<Texture2D>(resourcePath);
             if (FrameArtworks[frameIndex] != null)
             {

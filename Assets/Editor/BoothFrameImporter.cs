@@ -6,7 +6,7 @@ public sealed class BoothFrameImporter : AssetPostprocessor
 {
     private void OnPreprocessTexture()
     {
-        if (!assetPath.StartsWith("Assets/Resources/PhotoBooth/") || !assetPath.EndsWith("Frame.png"))
+        if (!assetPath.StartsWith("Assets/Resources/Frames/") || !assetPath.EndsWith("Frame.png"))
         {
             return;
         }

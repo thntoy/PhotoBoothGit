@@ -1,6 +1,6 @@
 # Frame artwork
 
-`Assets/Resources/PhotoBooth/BotanicalFrame.png` was generated using the built-in imagegen tool.
+`Assets/Resources/Frames/BotanicalFrame.png` was generated using the built-in imagegen tool.
 
 Prompt: Production raster photo booth frame background, portrait 4:5, ivory cotton paper, hand drawn pastel florals, lavender sprigs, peach blossoms, sage leaves, gold sparkles around the edges and lower 20%, clean central square for a photograph; flat printed stationery, no people, no text, no logos or watermark.
 

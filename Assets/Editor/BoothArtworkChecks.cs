@@ -8,7 +8,7 @@ public static class BoothArtworkChecks
     [MenuItem("Tools/Photo Booth/Check Frame Artwork")]
     public static void Run()
     {
-        Texture2D artwork = Resources.Load<Texture2D>("PhotoBooth/BotanicalFrame");
+        Texture2D artwork = Resources.Load<Texture2D>("Frames/BotanicalFrame");
         if (artwork == null || !artwork.isReadable)
         {
             throw new Exception("Frame artwork is missing or not readable.");
