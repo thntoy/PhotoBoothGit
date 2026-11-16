@@ -23,7 +23,7 @@ OnDestroy -> ปิดกล้อง ยกเลิก request และคื
 | ไฟล์ | หน้าที่ |
 | --- | --- |
 | `PhotoBooth.cs` | ควบคุมลำดับงาน สถานะกล้อง ภาพ และข้อความ |
-| `PhotoBooth.View.cs` | วาดหน้าจอและเรียกเมธอดเมื่อกดปุ่ม |
+| `PhotoBoothView.cs` | วาดหน้าจอและเรียกเมธอดเมื่อกดปุ่ม |
 | `BoothCameraFrame.cs` | แปลงภาพดิบให้ตั้งตรง กลับด้าน และครอปสี่เหลี่ยม |
 | `BoothPhotoComposer.cs` | สีและชื่อกรอบ การรวมภาพกับกรอบ และสร้างภาพทดสอบ |
 | `BoothShareClient.cs` | อ่านค่าบริการและอัปโหลด PNG |
@@ -36,7 +36,7 @@ OnDestroy -> ปิดกล้อง ยกเลิก request และคื
 | `Assets/Editor/PhotoBoothServiceSettings.cs` | หน้าตั้งค่าบริการจริง |
 | `Server/card-share/start.mjs` | เปิดเซิร์ฟเวอร์และ HTTPS Tunnel แล้วเขียนค่ากลับให้ Unity |
 
-`partial class` ใน PhotoBooth.View.cs หมายถึงส่วนหนึ่งของคลาส PhotoBooth เดียวกัน แยกไฟล์เฉพาะเพื่อไม่ให้โค้ดวาดหน้าจอปนกับลำดับงาน ไม่ต้องติด Component ตัวที่สอง
+`partial class` ใน PhotoBoothView.cs หมายถึงส่วนหนึ่งของคลาส PhotoBooth เดียวกัน แยกไฟล์เฉพาะเพื่อไม่ให้โค้ดวาดหน้าจอปนกับลำดับงาน ไม่ต้องติด Component ตัวที่สอง
 
 ## แนวทางแก้ต่อ
 
@@ -58,3 +58,4 @@ OnDestroy -> ปิดกล้อง ยกเลิก request และคื
 5. รัน `node --test Server/card-share/test/*.test.mjs` เมื่อแก้ฝั่งเซิร์ฟเวอร์
 
 การใช้ภาพทดสอบยังไม่ยืนยันการทำงานกับ Webcam จริง
+

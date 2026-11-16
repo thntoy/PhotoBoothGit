@@ -5,15 +5,23 @@ using UnityEngine;
 
 /// <summary>
 /// Coordinates one booth session: preview -> capture -> framed PNG -> save or QR.
-/// Screen drawing is in PhotoBooth.View.cs; image processing and uploads have separate helpers.
+/// Screen drawing is in PhotoBoothView.cs; image processing and uploads have separate helpers.
 /// </summary>
 public sealed partial class PhotoBooth : MonoBehaviour
 {
+    // Kiosk visitors see one task at a time. Technical controls are operator-only.
+    private enum KioskStep { ChooseFrame, Capture, Review, Download }
+    private KioskStep currentStep = KioskStep.ChooseFrame;
+    [SerializeField] private bool showOperatorControls;
+    [SerializeField, Min(30f)] private float sessionTimeoutSeconds = 120f;
+    private float lastInteractionTime;
+    private long downloadExpiryUnixSeconds;
+
     private const int RequestedCameraWidth = 1280;
     private const int RequestedCameraHeight = 720;
     private const int RequestedCameraFps = 30;
     private const int MinimumCameraWidth = 16;
-    private const int PreviewMaximumSize = 900;
+    private const int PreviewMaximumSize = 600;
     private const int PhotoMaximumSize = 1280;
     private const float PreviewIntervalSeconds = 0.08f;
     private const float CameraStartupTimeoutSeconds = 12f;
@@ -39,6 +47,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private void Awake()
     {
         Application.runInBackground = true;
+        lastInteractionTime = Time.unscaledTime;
     }
 
     private IEnumerator Start()
@@ -90,6 +99,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
 
     private void Update()
     {
+        UpdateKioskSession();
         if (framedPhotoTexture != null || isBusy || webcam == null)
         {
             return;
@@ -156,6 +166,8 @@ public sealed partial class PhotoBooth : MonoBehaviour
         DestroyTexture(ref qrTexture);
         framedPhotoTexture = BoothPhotoComposer.CreateFramedPhoto(squarePhoto, selectedFrameIndex);
         photoPngBytes = framedPhotoTexture.EncodeToPNG();
+        currentStep = KioskStep.Review;
+        lastInteractionTime = Time.unscaledTime;
     }
 
     private void SavePhotoToComputer()
@@ -189,6 +201,9 @@ public sealed partial class PhotoBooth : MonoBehaviour
         try
         {
             qrTexture = CardQrTexture.Render(response.downloadUrl);
+            downloadExpiryUnixSeconds = response.expiresAtUnixSeconds;
+            currentStep = KioskStep.Download;
+            lastInteractionTime = Time.unscaledTime;
             string expiry = DateTimeOffset.FromUnixTimeSeconds(response.expiresAtUnixSeconds)
                 .ToLocalTime().ToString("dd MMM HH:mm");
             statusMessage = "Scan with your phone to save. Available until " + expiry;
@@ -209,6 +224,9 @@ public sealed partial class PhotoBooth : MonoBehaviour
         DestroyTexture(ref framedPhotoTexture);
         DestroyTexture(ref qrTexture);
         photoPngBytes = null;
+        downloadExpiryUnixSeconds = 0;
+        currentStep = KioskStep.Capture;
+        lastInteractionTime = Time.unscaledTime;
         statusMessage = "Ready for the next photo.";
     }
 
@@ -267,6 +285,39 @@ public sealed partial class PhotoBooth : MonoBehaviour
     }
 #endif
 
+    private void StartNewSession()
+    {
+        ResetPhoto();
+        selectedFrameIndex = 0;
+        currentStep = KioskStep.ChooseFrame;
+        DestroyTexture(ref framedPreviewTexture);
+        DestroyTexture(ref previewTexture);
+        previewSource = null;
+        statusMessage = "Choose a frame to begin.";
+    }
+
+    private void UpdateKioskSession()
+    {
+        // Never interrupt a countdown or upload. A completed image belongs to one visitor only.
+        if (isBusy)
+        {
+            lastInteractionTime = Time.unscaledTime;
+            return;
+        }
+
+        if (qrTexture != null && DateTimeOffset.UtcNow.ToUnixTimeSeconds() >= downloadExpiryUnixSeconds)
+        {
+            DestroyTexture(ref qrTexture);
+            currentStep = KioskStep.Review;
+            statusMessage = "This download link has expired. Create a new QR to continue.";
+        }
+
+        if (currentStep != KioskStep.ChooseFrame && Time.unscaledTime - lastInteractionTime >= sessionTimeoutSeconds)
+        {
+            StartNewSession();
+        }
+    }
+
     private void StopCamera()
     {
         if (webcam == null)
@@ -290,6 +341,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
 
     private void OnDestroy()
     {
+        ReleaseViewTextures();
         shareClient.Dispose();
         StopCamera();
         DestroyTexture(ref previewTexture);
@@ -297,3 +349,6 @@ public sealed partial class PhotoBooth : MonoBehaviour
         DestroyTexture(ref qrTexture);
     }
 }
+
+
+

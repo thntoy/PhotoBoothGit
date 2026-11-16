@@ -11,58 +11,80 @@ public static class BoothPhotoComposer
         new Color(0.87f, 0.67f, 0.91f)
     };
 
-    public static readonly string[] FrameNames = { "Warm paper", "Sky blue", "Lilac" };
+    public static readonly string[] FrameNames = { "Botanical Bloom", "The Daily Moment", "Lavender Hour" };
 
     public static Color GetFrameColor(int frameIndex)
     {
         return FrameColors[frameIndex];
     }
 
-    // The caller owns the returned texture and must destroy it when no longer needed.
+    private static readonly Texture2D[] FrameArtworks = new Texture2D[3];
+    private static readonly Color32[][] ArtworkPixels = new Color32[3][];
+
+    public static float GetPhotoTopFraction(int frameIndex)
+    {
+        // Leave space for the newspaper masthead; floral frames use a narrow upper border.
+        return frameIndex == 1 ? 0.18f : 0.06f;
+    }
+
+    // The same frame and photo placement are used for both preview and download.
     public static Texture2D CreateFramedPhoto(Texture2D squarePhoto, int frameIndex)
     {
-        int photoSize = squarePhoto.width;
-        int borderSize = photoSize / 18;
-        int outputWidth = photoSize + borderSize * 2;
-        int outputHeight = photoSize + borderSize * 5;
-        Color32[] outputPixels = new Color32[outputWidth * outputHeight];
-        Color32 frameColor = GetFrameColor(frameIndex);
-
-        for (int index = 0; index < outputPixels.Length; index++)
+        if (FrameArtworks[frameIndex] == null)
         {
-            outputPixels[index] = frameColor;
+            string resourcePath = frameIndex == 1 ? "PhotoBooth/NewspaperFrame" : "PhotoBooth/BotanicalFrame";
+            FrameArtworks[frameIndex] = Resources.Load<Texture2D>(resourcePath);
+            if (FrameArtworks[frameIndex] != null)
+            {
+                ArtworkPixels[frameIndex] = FrameArtworks[frameIndex].GetPixels32();
+            }
         }
 
+        const float photoWidthFraction = 0.84f;
+        int photoSize = squarePhoto.width;
+        int outputWidth = Mathf.RoundToInt(photoSize / photoWidthFraction);
+        int outputHeight = Mathf.RoundToInt(outputWidth * 1.25f);
+        int photoLeft = (outputWidth - photoSize) / 2;
+        int photoTop = Mathf.RoundToInt(outputHeight * GetPhotoTopFraction(frameIndex));
+        int photoBottom = outputHeight - photoTop - photoSize;
+        Color32[] pixels = new Color32[outputWidth * outputHeight];
+
+        PaintFrameBackground(pixels, outputWidth, outputHeight, frameIndex);
         Color32[] photoPixels = squarePhoto.GetPixels32();
         for (int row = 0; row < photoSize; row++)
         {
-            int sourceStart = row * photoSize;
-            // Unity texture coordinates start at the bottom left. Leave a wider bottom border.
-            int destinationStart = (row + borderSize * 4) * outputWidth + borderSize;
-            Array.Copy(photoPixels, sourceStart, outputPixels, destinationStart, photoSize);
+            int destination = (row + photoBottom) * outputWidth + photoLeft;
+            Array.Copy(photoPixels, row * photoSize, pixels, destination, photoSize);
         }
 
-        DrawDecorativeBars(outputPixels, outputWidth, borderSize);
-
-        Texture2D framedPhoto = new Texture2D(outputWidth, outputHeight, TextureFormat.RGB24, false);
-        framedPhoto.name = "Framed booth photo";
-        framedPhoto.SetPixels32(outputPixels);
-        framedPhoto.Apply();
-        return framedPhoto;
+        Texture2D result = new Texture2D(outputWidth, outputHeight, TextureFormat.RGB24, false);
+        result.name = FrameNames[frameIndex] + " photo";
+        result.SetPixels32(pixels);
+        result.Apply();
+        return result;
     }
 
-    private static void DrawDecorativeBars(Color32[] pixels, int width, int borderSize)
+    private static void PaintFrameBackground(Color32[] pixels, int width, int height, int frameIndex)
     {
-        Color32 barColor = new Color32(32, 36, 54, 255);
-        for (int y = borderSize; y < borderSize * 2; y++)
+        Texture2D frameArtwork = FrameArtworks[frameIndex];
+        Color32[] artworkPixels = ArtworkPixels[frameIndex];
+        for (int y = 0; y < height; y++)
         {
-            for (int x = borderSize; x < width - borderSize; x++)
+            for (int x = 0; x < width; x++)
             {
-                bool isDarkBar = (x / (borderSize * 2)) % 2 == 0;
-                if (isDarkBar)
+                Color color = GetFrameColor(frameIndex);
+                if (frameArtwork != null)
                 {
-                    pixels[y * width + x] = barColor;
+                    int sourceX = x * frameArtwork.width / width;
+                    int sourceY = y * frameArtwork.height / height;
+                    color = artworkPixels[sourceY * frameArtwork.width + sourceX];
+                    // A shared illustration with three colour treatments; the photo is never tinted.
+                    if (frameIndex == 2)
+                    {
+                        color = new Color(color.r * 0.97f, color.g * 0.90f, Mathf.Min(1f, color.b * 1.06f));
+                    }
                 }
+                pixels[y * width + x] = color;
             }
         }
     }

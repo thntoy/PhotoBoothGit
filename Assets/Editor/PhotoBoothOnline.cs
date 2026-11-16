@@ -14,6 +14,7 @@ public static class PhotoBoothOnline
     private const string TunnelExecutablePath = "Tools/cloudflared.exe";
     private static readonly object LogLock = new object();
     private static Process serverProcess;
+    private const string NodePathPreference = "PhotoBooth.NodeExecutablePath";
 
     // Field names match online-state.json written by start.mjs.
     [Serializable]
@@ -37,6 +38,14 @@ public static class PhotoBoothOnline
             return;
         }
 
+        string nodeExecutable = FindNodeExecutable(projectDirectory);
+        if (nodeExecutable == null)
+        {
+            EditorUtility.DisplayDialog("Node.js not found",
+                "Unity could not find node.exe. Use Tools > Photo Booth > Select Node Executable to choose it, then start again. No Windows PATH changes are required.", "OK");
+            return;
+        }
+
         OnlineTestState state = ReadState();
         if (state != null && state.status == "ready")
         {
@@ -48,7 +57,7 @@ public static class PhotoBoothOnline
         {
             File.WriteAllText(Path.Combine(projectDirectory, LogFilePath), "");
             serverProcess = new Process();
-            serverProcess.StartInfo = CreateStartInfo(projectDirectory);
+            serverProcess.StartInfo = CreateStartInfo(projectDirectory, nodeExecutable);
             // Output callbacks run on background threads. Keep Unity API calls out of them.
             serverProcess.OutputDataReceived += (sender, args) => AppendLog(projectDirectory, args.Data);
             serverProcess.ErrorDataReceived += (sender, args) => AppendLog(projectDirectory, args.Data);
@@ -60,12 +69,13 @@ public static class PhotoBoothOnline
         catch (Exception exception)
         {
             UnityEngine.Debug.LogError("Could not start online QR test: " + exception.Message);
+            EditorUtility.DisplayDialog("Online QR test could not start", exception.Message, "OK");
         }
     }
 
-    private static ProcessStartInfo CreateStartInfo(string projectDirectory)
+    private static ProcessStartInfo CreateStartInfo(string projectDirectory, string nodeExecutable)
     {
-        return new ProcessStartInfo("node", ServerScriptPath)
+        return new ProcessStartInfo(nodeExecutable, ServerScriptPath)
         {
             WorkingDirectory = projectDirectory,
             UseShellExecute = false,
@@ -73,6 +83,70 @@ public static class PhotoBoothOnline
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
+    }
+
+    // Unity inherits PATH when the Editor starts. A runtime available in a terminal
+    // may therefore be missing from Unity's PATH; always launch an absolute filename.
+    public static string FindNodeExecutable(string projectDirectory)
+    {
+        string configuredPath = EditorPrefs.GetString(NodePathPreference, "");
+        string userDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string[] candidates =
+        {
+            configuredPath,
+            Path.Combine(projectDirectory, "Tools", "node.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "node.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "nodejs", "node.exe"),
+            // The development workstation also has a bundled Node runtime here.
+            Path.Combine(userDirectory, ".cache", "codex-runtimes", "codex-primary-runtime", "dependencies", "node", "bin", "node.exe")
+        };
+
+        foreach (string candidate in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
+            {
+                return Path.GetFullPath(candidate);
+            }
+        }
+
+        string searchPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (string directory in searchPath.Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                continue;
+            }
+            try
+            {
+                string candidate = Path.Combine(directory.Trim().Trim('"'), "node.exe");
+                if (File.Exists(candidate))
+                {
+                    return Path.GetFullPath(candidate);
+                }
+            }
+            catch (ArgumentException)
+            {
+                // Ignore malformed PATH entries and continue looking.
+            }
+        }
+        return null;
+    }
+
+    [MenuItem("Tools/Photo Booth/Select Node Executable")]
+    public static void SelectNodeExecutable()
+    {
+        string selectedPath = EditorUtility.OpenFilePanel("Select node.exe", "", "exe");
+        if (string.IsNullOrEmpty(selectedPath))
+        {
+            return;
+        }
+        if (!string.Equals(Path.GetFileName(selectedPath), "node.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            EditorUtility.DisplayDialog("Select Node.js", "Please choose node.exe.", "OK");
+            return;
+        }
+        EditorPrefs.SetString(NodePathPreference, selectedPath);
+        UnityEngine.Debug.Log("Photo Booth Node executable saved. Windows PATH was not changed.");
     }
 
     private static void AppendLog(string projectDirectory, string line)

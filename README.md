@@ -40,7 +40,11 @@ Allow webcam access, select frame/mirror, then Take photo. PNGs saved on the kio
 
 `node --test Server/card-share/test/*.test.mjs`
 
-Desktop Editor/Windows prototype; three geometric frame designs, English UI, no AI. Camera crop/orientation and sharing service adapted from True4C. QR Codecrete 3.2.1 MIT license: `Assets/Plugins/QR/LICENSE.txt`.
+Desktop Editor/Windows prototype; three botanical frame colour treatments, English UI, no AI. Camera crop/orientation and sharing service adapted from True4C. QR Codecrete 3.2.1 MIT license: `Assets/Plugins/QR/LICENSE.txt`.
 
 ## Code guide
 For the runtime flow and file responsibilities, see [คู่มืออ่านโค้ดภาษาไทย](Docs/CODE_GUIDE_TH.md). Start with PhotoBooth.cs, then PhotoBooth.View.cs.
+
+
+## Portrait kiosk interface
+The visitor flow now uses four portrait screens: Frame > Photo > Review > Download. Use a 9:16 Game View. For no-webcam testing enable Show Operator Controls on the Photo Booth component, then use Sample on the Photo screen. See [Kiosk setup and session behavior](Docs/KIOSK.md).
