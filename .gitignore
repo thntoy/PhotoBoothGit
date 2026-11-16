@@ -112,3 +112,14 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Local booth photos and upload credentials
+/Assets/StreamingAssets/photo-booth-share.json*
+/Server/card-share/data/
+
+/Captures/
+
+/Tools/cloudflared.exe
+/Server/card-share/online-state.json
+/Server/card-share/online-test.log
+/ProjectSettings/PhotoBoothShare.json
