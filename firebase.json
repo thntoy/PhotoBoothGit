@@ -1,0 +1,10 @@
+{
+  "functions": [{"source":"Server/card-share","codebase":"photo-booth","runtime":"nodejs22","ignore":["data","test","node_modules","*.log","online-state.json","start.mjs"]}],
+  "hosting": {
+    "target":"photo-booth",
+    "public":"BuildWebGL",
+    "ignore":["firebase.json","**/.*","**/node_modules/**"],
+    "rewrites":[{"source":"/photo-api/**","function":{"functionId":"photoBoothShare","region":"asia-southeast1"}}],
+    "headers":[{"source":"**","headers":[{"key":"Permissions-Policy","value":"camera=(self), microphone=()"}]}]
+  }
+}

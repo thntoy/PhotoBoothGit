@@ -16,10 +16,9 @@ public sealed partial class PhotoBooth
     private GUIStyle frameNameStyle;
     private GUIStyle countdownStyle;
     private GUIStyle centeredStyle;
-    private Texture2D framedPreviewTexture;
-    private Texture2D previewSource;
-    private int previewFrameIndex = -1;
-    private Texture2D[] frameThumbnails;
+    private GUIStyle zoomTrackStyle;
+    private GUIStyle zoomThumbStyle;
+    private bool draggingPhoto;
 
     private void OnGUI()
     {
@@ -36,16 +35,26 @@ public sealed partial class PhotoBooth
 
         DrawKioskHeader();
         GUI.enabled = !isBusy;
+        if (cameraSettingsOpen)
+        {
+            DrawCameraSettings();
+            GUI.enabled = true;
+            DrawSessionFooter();
+            return;
+        }
         switch (currentStep)
         {
-            case KioskStep.ChooseFrame:
-                DrawChooseFrameScreen();
+            case KioskStep.SelectStyle:
+                DrawSelectStyleScreen();
+                break;
+            case KioskStep.AdjustPhoto:
+                DrawAdjustPhotoScreen();
                 break;
             case KioskStep.Capture:
                 DrawCaptureScreen();
                 break;
-            case KioskStep.Review:
-                DrawReviewScreen();
+            case KioskStep.ConfirmPhoto:
+                DrawConfirmPhotoScreen();
                 break;
             case KioskStep.Download:
                 DrawDownloadScreen();
@@ -75,6 +84,8 @@ public sealed partial class PhotoBooth
             border = new RectOffset(),
             padding = new RectOffset(20, 20, 12, 12)
         };
+        zoomTrackStyle = new GUIStyle(GUI.skin.horizontalSlider) { fixedHeight = 20 };
+        zoomThumbStyle = new GUIStyle(GUI.skin.horizontalSliderThumb) { fixedWidth = 52, fixedHeight = 64 };
         buttonStyle.normal.background = Texture2D.whiteTexture;
         buttonStyle.hover.background = Texture2D.whiteTexture;
         buttonStyle.active.background = Texture2D.whiteTexture;
@@ -82,13 +93,20 @@ public sealed partial class PhotoBooth
 
     private static GUIStyle CreateLabelStyle(int fontSize, FontStyle fontStyle, Color textColor)
     {
-        GUIStyle style = new GUIStyle(GUI.skin.label)
+        GUIStyle style = new GUIStyle()
         {
             fontSize = fontSize,
             fontStyle = fontStyle,
             wordWrap = true
         };
-        style.normal.textColor = textColor;
+        // Read-only labels have one appearance in every pointer/focus state.
+        GUIStyleState[] states = { style.normal, style.hover, style.active, style.focused,
+            style.onNormal, style.onHover, style.onActive, style.onFocused };
+        foreach (GUIStyleState state in states)
+        {
+            state.textColor = textColor;
+            state.background = null;
+        }
         return style;
     }
 
@@ -103,213 +121,329 @@ public sealed partial class PhotoBooth
     {
         Fill(new Rect(0, 0, DesignWidth, DesignHeight), Paper);
         GUI.Label(new Rect(64, 45, 700, 55), "MOMENT / PHOTO BOOTH", frameNameStyle);
-        GUI.Label(new Rect(840, 52, 180, 40), "JUST BE YOU.", smallStyle);
+        GUI.Label(new Rect(840, 52, 180, 40), IsMobileTest ? "MOBILE TEST" : "AI DEMO", smallStyle);
         Fill(new Rect(64, 123, 952, 2), new Color(0.78f, 0.80f, 0.77f));
 
-        string[] steps = { "FRAME", "PHOTO", "REVIEW", "DOWNLOAD" };
-        for (int index = 0; index < steps.Length; index++)
-        {
-            bool active = (int)currentStep == index;
-            Rect position = new Rect(64 + index * 240, 155, 224, 66);
-            Fill(position, active ? Accent : Color.white);
-            GUIStyle style = new GUIStyle(centeredStyle) { fontSize = 24 };
-            style.normal.textColor = active ? Color.white : Muted;
-            GUI.Label(position, (index + 1) + "  " + steps[index], style);
-        }
+
     }
 
     private void DrawTitle(string title, string subtitle)
     {
-        GUI.Label(new Rect(64, 258, 952, 88), title, headingStyle);
-        GUI.Label(new Rect(67, 352, 945, 86), subtitle, bodyStyle);
+        GUI.Label(new Rect(64, 185, 952, 88), title, headingStyle);
+        GUI.Label(new Rect(67, 275, 945, 86), subtitle, bodyStyle);
     }
 
-    private Texture2D GetFramedPreview()
+    private void DrawSelectStyleScreen()
     {
-        if (previewTexture == null)
+        DrawTitle("Who will you become?", "Choose a look before your photo. Concept images show the artistic direction.");
+        for (int index = 0; index < BoothStyleRenderer.Names.Length; index++)
         {
-            return null;
+            float top = 465 + index * 330;
+            bool selected = selectedStyleIndex == index;
+            Rect card = new Rect(64, top, 952, 300);
+            Fill(card, selected ? Accent : Color.white);
+            Fill(new Rect(70, top + 6, 940, 288), Paper);
+            Texture2D concept = BoothStyleRenderer.LoadConceptPreview(index);
+            if (concept != null)
+            {
+                GUI.DrawTexture(new Rect(87, top + 15, 216, 270), concept, ScaleMode.ScaleToFit);
+            }
+            GUI.Label(new Rect(335, top + 40, 640, 65), BoothStyleRenderer.Names[index], frameNameStyle);
+            GUI.Label(new Rect(335, top + 110, 620, 80), BoothStyleRenderer.Descriptions[index], bodyStyle);
+            GUI.Label(new Rect(335, top + 220, 620, 50), selected ? "SELECTED  /  CONCEPT SAMPLE" : "TAP TO SELECT  /  CONCEPT SAMPLE", smallStyle);
+            if (GUI.Button(card, GUIContent.none, GUIStyle.none))
+            {
+                selectedStyleIndex = index;
+            }
         }
-        if (!ReferenceEquals(previewTexture, previewSource) || selectedFrameIndex != previewFrameIndex)
+        GUI.Label(new Rect(64, 1485, 952, 85), "DEMO MODE: your photo uses a simulated effect. These concept samples are not a promise of AI output.", smallStyle);
+        if (DrawButton(new Rect(64, 1645, 952, 116), "Choose this style  →", true))
         {
-            DestroyTexture(ref framedPreviewTexture);
-            framedPreviewTexture = BoothPhotoComposer.CreateFramedPhoto(previewTexture, selectedFrameIndex);
-            previewSource = previewTexture;
-            previewFrameIndex = selectedFrameIndex;
+            currentStep = KioskStep.Capture;
+            statusMessage = "Selected: " + BoothStyleRenderer.Names[selectedStyleIndex];
         }
-        return framedPreviewTexture;
     }
 
-    private void EnsureFrameThumbnails()
+    private void DrawAdjustPhotoScreen()
     {
-        if (frameThumbnails != null)
+        DrawTitle("Make it yours.", "Drag to position your demo portrait. Use zoom to adjust the composition.");
+        Rect frameArea = new Rect(172, 430, 736, 920);
+        if (resultTexture != null)
+        {
+            GUI.DrawTexture(frameArea, resultTexture, ScaleMode.ScaleToFit);
+        }
+        HandlePhotoDrag(frameArea);
+
+        GUI.Label(new Rect(64, 1380, 952, 60), "SIMULATED / " + BoothStyleRenderer.Names[selectedStyleIndex], centeredStyle);
+        GUI.Label(new Rect(64, 1470, 500, 45), "Zoom  " + photoZoom.ToString("0.0") + "x", bodyStyle);
+        float newZoom = GUI.HorizontalSlider(new Rect(176, 1530, 512, 78), photoZoom, 1f, 3f, zoomTrackStyle, zoomThumbStyle);
+        if (DrawButton(new Rect(64, 1520, 96, 90), "−"))
+        {
+            newZoom = Mathf.Max(1f, photoZoom - 0.1f);
+        }
+        if (DrawButton(new Rect(704, 1520, 96, 90), "+"))
+        {
+            newZoom = Mathf.Min(3f, photoZoom + 0.1f);
+        }
+        if (!Mathf.Approximately(newZoom, photoZoom))
+        {
+            photoZoom = newZoom;
+            RebuildStyledPhoto();
+        }
+        if (DrawButton(new Rect(824, 1520, 192, 90), "Reset"))
+        {
+            photoZoom = 1f;
+            photoOffset = Vector2.zero;
+            RebuildStyledPhoto();
+        }
+        if (DrawButton(new Rect(64, 1660, 300, 112), "Back"))
+        {
+            currentStep = KioskStep.ConfirmPhoto;
+        }
+        if (DrawButton(new Rect(390, 1660, 626, 112), "OK", true))
+        {
+            ContinueToOutput();
+        }
+    }
+
+    private void HandlePhotoDrag(Rect frameArea)
+    {
+        if (capturedSourceTexture == null || isBusy)
         {
             return;
         }
-
-        frameThumbnails = new Texture2D[BoothPhotoComposer.FrameNames.Length];
-        Texture2D placeholder = new Texture2D(128, 128, TextureFormat.RGB24, false);
-        Color[] pixels = new Color[128 * 128];
-        for (int index = 0; index < pixels.Length; index++)
+        Rect photoArea = frameArea;
+        Event pointer = Event.current;
+        if (pointer.type == EventType.MouseDown && photoArea.Contains(pointer.mousePosition))
         {
-            pixels[index] = new Color(0.80f, 0.86f, 0.86f);
+            draggingPhoto = true;
+            pointer.Use();
         }
-        placeholder.SetPixels(pixels);
-        placeholder.Apply();
-        for (int index = 0; index < frameThumbnails.Length; index++)
+        if (pointer.type == EventType.MouseDrag && draggingPhoto)
         {
-            frameThumbnails[index] = BoothPhotoComposer.CreateFramedPhoto(placeholder, index);
-        }
-        Destroy(placeholder);
-    }
-
-    private void DrawChooseFrameScreen()
-    {
-        DrawTitle("Your moment. Your style.", "Tap a frame, then continue to the camera.");
-        EnsureFrameThumbnails();
-        string[] descriptions = { "Soft florals & warm paper", "Your very own front page", "A little lavender magic" };
-        for (int index = 0; index < frameThumbnails.Length; index++)
-        {
-            float top = 474 + index * 320;
-            bool selected = selectedFrameIndex == index;
-            Fill(new Rect(64, top, 952, 290), selected ? Accent : Color.white);
-            Fill(new Rect(70, top + 6, 940, 278), Color.white);
-            GUI.DrawTexture(new Rect(97, top + 20, 200, 250), frameThumbnails[index], ScaleMode.ScaleToFit);
-            GUI.Label(new Rect(338, top + 65, 600, 60), BoothPhotoComposer.FrameNames[index], frameNameStyle);
-            GUI.Label(new Rect(338, top + 128, 600, 55), descriptions[index], bodyStyle);
-            GUI.Label(new Rect(338, top + 207, 600, 45), selected ? "SELECTED" : "TAP TO SELECT", smallStyle);
-            if (GUI.Button(new Rect(64, top, 952, 290), GUIContent.none, GUIStyle.none))
+            Rect crop = BoothPhotoCrop.GetWindow(simulatedStyleTexture.width, simulatedStyleTexture.height, photoZoom, photoOffset, 0.8f);
+            float travelX = (simulatedStyleTexture.width - crop.width) / 2f;
+            float travelY = (simulatedStyleTexture.height - crop.height) / 2f;
+            if (travelX > 0)
             {
-                selectedFrameIndex = index;
+                photoOffset.x -= pointer.delta.x * crop.width / photoArea.width / travelX;
             }
+            if (travelY > 0)
+            {
+                photoOffset.y += pointer.delta.y * crop.height / photoArea.height / travelY;
+            }
+            photoOffset.x = Mathf.Clamp(photoOffset.x, -1f, 1f);
+            photoOffset.y = Mathf.Clamp(photoOffset.y, -1f, 1f);
+            RebuildStyledPhoto();
+            pointer.Use();
         }
-        if (DrawButton(new Rect(64, 1578, 952, 116), "Continue to camera  →", true))
+        if (pointer.type == EventType.MouseUp)
         {
-            currentStep = KioskStep.Capture;
+            draggingPhoto = false;
         }
     }
 
     private void DrawCaptureScreen()
     {
-        DrawTitle("Step into the frame.", "Look at the camera. Tap below when you're ready.");
-        DrawLargePhoto(GetFramedPreview(), new Rect(190, 468, 700, 875));
+        DrawTitle("Your moment starts here.", "Look at the camera. Your preview stays live while we count down.");
+        Rect cameraArea = new Rect(64, 430, 952, 1120);
+        Fill(cameraArea, new Color(0.08f, 0.10f, 0.12f));
+        if (webcam != null && hasCameraFrame)
+        {
+            DrawLiveCamera(cameraArea);
+        }
+        else
+        {
+            GUI.Label(new Rect(120, 840, 840, 160), "Tap below to start the camera.", centeredStyle);
+        }
         if (countdownRemaining > 0)
         {
-            Fill(new Rect(400, 730, 280, 280), Color.white);
-            GUI.Label(new Rect(400, 730, 280, 280), countdownRemaining.ToString(), countdownStyle);
+            Rect badge = new Rect(85, 450, 150, 170);
+            Fill(badge, Color.white);
+            GUI.Label(badge, countdownRemaining.ToString(), countdownStyle);
         }
-        if (DrawButton(new Rect(64, 1398, 458, 88), "Change frame"))
+        GUI.enabled = !isBusy && !cameraPermissionPending;
+        if (DrawButton(new Rect(64, 1600, 952, 116), CameraIsReady ? "Take photo" : "Start camera", true))
         {
-            currentStep = KioskStep.ChooseFrame;
+            if (CameraIsReady)
+            {
+                StartCoroutine(CapturePhoto());
+            }
+            else StartCoroutine(EnableCamera());
         }
-        if (DrawButton(new Rect(542, 1398, 474, 88), mirrorPhoto ? "Mirror: ON" : "Mirror: OFF"))
+        if (IsMobileTest && !Application.isEditor && !isBusy)
         {
-            mirrorPhoto = !mirrorPhoto;
+            if (DrawButton(new Rect(64, 1730, 952, 76), "Test camera settings"))
+            {
+                cameraSettingsOpen = true;
+            }
         }
-        GUI.enabled = !isBusy && webcam != null && webcam.isPlaying && previewTexture != null;
-        if (DrawButton(new Rect(64, 1530, 952, 116), isBusy ? "Get ready..." : "Take my photo  /  3 sec", true))
+        if (!isBusy && !IsMobileTest && (!Application.isEditor || !showOperatorControls))
         {
-            StartCoroutine(CapturePhoto());
-        }
-        GUI.enabled = !isBusy;
-        bool cameraUnavailable = webcam == null || previewTexture == null;
-        if (cameraUnavailable)
-        {
-            GUI.Label(new Rect(64, 1652, 952, 42), "Camera not ready. Please ask an attendant for help.", centeredStyle);
+            if (DrawButton(new Rect(64, 1730, 952, 76), "Back to styles"))
+            {
+                currentStep = KioskStep.SelectStyle;
+            }
         }
         DrawOperatorControls();
     }
 
-    private void DrawLargePhoto(Texture2D image, Rect area)
+    // Draw the live GPU texture. No GetPixels32 / Texture2D allocation in the preview loop.
+    private void DrawLiveCamera(Rect area)
     {
-        Fill(new Rect(area.x + 10, area.y + 12, area.width, area.height), new Color(0.85f, 0.84f, 0.80f));
-        if (image == null)
-        {
-            EnsureFrameThumbnails();
-            image = frameThumbnails[selectedFrameIndex];
-        }
-        GUI.DrawTexture(area, image, ScaleMode.ScaleToFit);
+        int angle = BoothCameraFrame.Rotation(webcam.videoRotationAngle);
+        bool quarterTurn = angle % 180 != 0;
+        float uprightWidth = quarterTurn ? webcam.height : webcam.width;
+        float uprightHeight = quarterTurn ? webcam.width : webcam.height;
+        float scale = Mathf.Min(area.width / uprightWidth, area.height / uprightHeight);
+        Vector2 centre = area.center;
+        Matrix4x4 previousMatrix = GUI.matrix;
+        Matrix4x4 mirror = Matrix4x4.Scale(new Vector3(mirrorPhoto ? -1f : 1f, 1f, 1f));
+        Matrix4x4 rotation = Matrix4x4.Rotate(Quaternion.Euler(0, 0, angle));
+        GUI.matrix = previousMatrix * Matrix4x4.Translate(centre) * mirror * rotation * Matrix4x4.Translate(-centre);
+        Rect rawArea = new Rect(centre.x - webcam.width * scale / 2f, centre.y - webcam.height * scale / 2f,
+            webcam.width * scale, webcam.height * scale);
+        Rect uv = webcam.videoVerticallyMirrored ? new Rect(0, 1, 1, -1) : new Rect(0, 0, 1, 1);
+        GUI.DrawTextureWithTexCoords(rawArea, webcam, uv);
+        GUI.matrix = previousMatrix;
     }
 
-    private void DrawReviewScreen()
+    private void DrawConfirmPhotoScreen()
     {
-        DrawTitle("A keeper?", "Check your photo before creating a download link.");
-        DrawLargePhoto(framedPhotoTexture, new Rect(190, 468, 700, 875));
-        if (DrawButton(new Rect(64, 1405, 952, 88), "Retake photo"))
+        DrawTitle(isBusy ? "Creating your demo look..." : "Happy with your photo?",
+            isBusy ? "Simulated effect — no AI service or image upload." : "Confirm this photo, then try your selected demo look.");
+        if (capturedSourceTexture != null)
+        {
+            GUI.DrawTexture(new Rect(64, 430, 952, 1120), capturedSourceTexture, ScaleMode.ScaleToFit);
+        }
+        if (DrawButton(new Rect(64, 1660, 300, 112), "Back"))
         {
             ResetPhoto();
         }
-        if (DrawButton(new Rect(64, 1530, 952, 116), isBusy ? "Preparing your photo..." : "Love it! Get my QR  →", true))
+        if (DrawButton(new Rect(390, 1660, 626, 112), "Use this photo", true))
         {
-            StartCoroutine(CreateDownloadQr());
+            StartCoroutine(SimulateSelectedStyle());
         }
-        if (isBusy)
-        {
-            GUI.Label(new Rect(64, 1670, 952, 70), "Please wait while your photo is uploaded.", centeredStyle);
-        }
-        DrawOperatorControls();
     }
 
     private void DrawDownloadScreen()
     {
-        DrawTitle("Scan. Save. Smile.", "Open your phone camera and scan the code below.");
-        Fill(new Rect(64, 476, 952, 900), Color.white);
+        if (IsMobileTest)
+        {
+            DrawTitle("Save your test photo.", "MOBILE TEST — saves on this device without an upload service.");
+            if (resultTexture != null)
+            {
+                GUI.DrawTexture(new Rect(190, 460, 700, 875), resultTexture, ScaleMode.ScaleToFit);
+            }
+            DrawOutputCountdown(1390);
+            if (DrawButton(new Rect(64, 1500, 952, 110), "Save on this device", true))
+            {
+                SavePhotoOnDevice();
+            }
+            if (DrawButton(new Rect(64, 1650, 952, 100), "Finish test"))
+            {
+                StartNewSession();
+            }
+            return;
+        }
+
+        DrawTitle("Take your moment with you.", "Scan to download, or print a copy of your demo portrait.");
         if (qrTexture != null)
         {
-            // Leave the encoder's white quiet zone visible for reliable scanning.
-            GUI.DrawTexture(new Rect(260, 520, 560, 560), qrTexture, ScaleMode.ScaleToFit);
+            Fill(new Rect(160, 510, 760, 760), Color.white);
+            GUI.DrawTexture(new Rect(200, 550, 680, 680), qrTexture, ScaleMode.ScaleToFit);
+            GUI.Label(new Rect(100, 1300, 880, 75), "Download within 24 hours. Any mobile network works.", centeredStyle);
         }
-        GUI.Label(new Rect(110, 1110, 860, 65), "Use mobile data or any Wi-Fi.", centeredStyle);
-        GUI.Label(new Rect(110, 1180, 860, 65), "The link is available for 24 hours after upload.", centeredStyle);
-        string expiry = downloadExpiryUnixSeconds > 0
-            ? System.DateTimeOffset.FromUnixTimeSeconds(downloadExpiryUnixSeconds).ToLocalTime().ToString("dd MMM yyyy  HH:mm")
-            : "";
-        GUI.Label(new Rect(110, 1250, 860, 60), "Available until " + expiry, centeredStyle);
-        if (DrawButton(new Rect(64, 1430, 952, 88), "Back to my photo"))
+        else
         {
-            currentStep = KioskStep.Review;
+            if (resultTexture != null)
+            {
+                GUI.DrawTexture(new Rect(300, 475, 480, 600), resultTexture, ScaleMode.ScaleToFit);
+            }
+            GUI.Label(new Rect(100, 1130, 880, 120), isBusy ? "Preparing your QR..." : "Online download is unavailable. You can still open the print dialog.", centeredStyle);
+            if (!isBusy && DrawButton(new Rect(240, 1310, 600, 90), "Try QR again"))
+            {
+                StartCoroutine(CreateDownloadQr());
+            }
         }
-        if (DrawButton(new Rect(64, 1560, 952, 116), "Done  /  Start a new session", true))
+        DrawOutputCountdown(1420);
+        if (DrawButton(new Rect(64, 1510, 952, 112), "Print photo", true))
+        {
+            PrintPhoto();
+        }
+        if (DrawButton(new Rect(64, 1660, 952, 100), "Done"))
         {
             StartNewSession();
         }
     }
 
+    private void DrawOutputCountdown(float top)
+    {
+        string message = outputTimer.IsRunning
+            ? "Returning to start in " + outputTimer.RemainingSeconds(Time.realtimeSinceStartupAsDouble) + " seconds"
+            : "Your 120-second countdown starts when preparation finishes.";
+        // The timer remains readable even while a QR retry disables the action buttons.
+        bool previousEnabled = GUI.enabled;
+        GUI.enabled = true;
+        GUI.Label(new Rect(64, top, 952, 70), message, centeredStyle);
+        GUI.enabled = previousEnabled;
+    }
+
     private void DrawOperatorControls()
     {
-        if (!showOperatorControls)
+#if UNITY_EDITOR
+        if (!showOperatorControls || currentStep != KioskStep.Capture || isBusy)
         {
             return;
         }
-
-        Fill(new Rect(64, 1696, 952, 100), new Color(0.88f, 0.90f, 0.88f));
-        if (currentStep == KioskStep.Capture)
+        if (DrawButton(new Rect(64, 1730, 300, 76), "Sample"))
         {
-            if (DrawButton(new Rect(72, 1705, 220, 76), "Sample"))
-            {
-                UseTestImage();
-            }
-            if (DrawButton(new Rect(300, 1705, 220, 76), "Camera"))
-            {
-                SwitchCamera();
-            }
-            if (DrawButton(new Rect(528, 1705, 220, 76), "Refresh"))
-            {
-                RefreshCameras();
-            }
-#if UNITY_EDITOR
-            if (DrawButton(new Rect(756, 1705, 250, 76), "Choose file"))
-            {
-                ChooseImageFromComputer();
-            }
-#endif
+            UseTestImage();
         }
-        else if (currentStep == KioskStep.Review)
+        if (DrawButton(new Rect(386, 1730, 300, 76), "Settings"))
         {
-            if (DrawButton(new Rect(72, 1705, 934, 76), "Operator: Save PNG on this computer"))
+            cameraSettingsOpen = true;
+        }
+        if (DrawButton(new Rect(708, 1730, 308, 76), "Choose file"))
+        {
+            ChooseImageFromComputer();
+        }
+#endif
+    }
+
+    private void DrawCameraSettings()
+    {
+        DrawTitle("Camera settings", "Choose an input on this device. On a phone, select the front or rear camera.");
+        GUI.enabled = !cameraPermissionPending;
+        if (DrawButton(new Rect(64, 470, 952, 100), cameraPermissionPending ? "Waiting for permission..." : "Enable camera / Refresh sources", true))
+        {
+            StartCoroutine(EnableCamera());
+        }
+        cameraListScroll = GUI.BeginScrollView(new Rect(64, 610, 952, 870), cameraListScroll,
+            new Rect(0, 0, 910, Mathf.Max(870, availableCameras.Length * 150)));
+        for (int index = 0; index < availableCameras.Length; index++)
+        {
+            WebCamDevice device = availableCameras[index];
+            string facing = device.isFrontFacing ? "Front" : "Rear / External";
+            string label = (index == selectedCameraIndex && webcam != null ? "Selected: " : "") + facing + " — " + device.name;
+            if (DrawButton(new Rect(0, index * 150, 900, 130), label))
             {
-                SavePhotoToComputer();
+                selectedCameraIndex = index;
+                StartSelectedCamera();
             }
+        }
+        GUI.EndScrollView();
+        if (availableCameras.Length == 0)
+        {
+            GUI.Label(new Rect(90, 650, 880, 160), "No cameras available yet. Tap Enable camera and allow access when your browser asks.", bodyStyle);
+        }
+        if (DrawButton(new Rect(64, 1480, 952, 76), mirrorPhoto ? "Mirror ON" : "Mirror OFF"))
+        {
+            mirrorPhoto = !mirrorPhoto;
+        }
+        if (DrawButton(new Rect(64, 1600, 952, 110), "Back to photo"))
+        {
+            cameraSettingsOpen = false;
         }
     }
 
@@ -317,8 +451,13 @@ public sealed partial class PhotoBooth
     {
         Fill(new Rect(64, 1820, 952, 2), new Color(0.78f, 0.80f, 0.77f));
         string message = statusMessage;
+        if (currentStep == KioskStep.Download)
+        {
+            GUI.Label(new Rect(64, 1842, 952, 65), "This screen returns to the first page automatically.", smallStyle);
+            return;
+        }
         float remaining = sessionTimeoutSeconds - (Time.unscaledTime - lastInteractionTime);
-        if (currentStep != KioskStep.ChooseFrame && !isBusy && remaining < 20f)
+        if ((capturedSourceTexture != null || cameraSettingsOpen) && !isBusy && remaining < 20f)
         {
             message = "Session ends in " + Mathf.CeilToInt(remaining) + " seconds. Tap anywhere to stay.";
         }
@@ -337,17 +476,4 @@ public sealed partial class PhotoBooth
         return pressed;
     }
 
-    private void ReleaseViewTextures()
-    {
-        DestroyTexture(ref framedPreviewTexture);
-        if (frameThumbnails == null)
-        {
-            return;
-        }
-        for (int index = 0; index < frameThumbnails.Length; index++)
-        {
-            DestroyTexture(ref frameThumbnails[index]);
-        }
-        frameThumbnails = null;
-    }
 }

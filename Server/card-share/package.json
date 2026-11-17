@@ -1,0 +1,18 @@
+{
+  "name": "photo-booth-share",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "main": "firebase-entry.mjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "start": "node src/local.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0"
+  }
+}

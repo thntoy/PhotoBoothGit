@@ -1,3 +1,5 @@
+> อัปเดตล่าสุด: ใช้ลำดับ Photo → Confirm → Style → QR และแยก Mobile Test ตาม [คู่มือ Kiosk UX](KIOSK_UX.md) รายละเอียดปุ่ม/ลำดับในเอกสารเก่าด้านล่างอาจไม่ตรงกับรุ่นปัจจุบัน
+
 # Kiosk portrait flow
 
 Reference design canvas: 1080 x 1920 (portrait). Other aspect ratios are letterboxed to preserve the touch layout. Use a portrait monitor for the intended full-screen layout; no Windows display settings are changed by this code.

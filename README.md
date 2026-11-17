@@ -48,3 +48,24 @@ For the runtime flow and file responsibilities, see [คู่มืออ่า
 
 ## Portrait kiosk interface
 The visitor flow now uses four portrait screens: Frame > Photo > Review > Download. Use a 9:16 Game View. For no-webcam testing enable Show Operator Controls on the Photo Booth component, then use Sample on the Photo screen. See [Kiosk setup and session behavior](Docs/KIOSK.md).
+
+## Firebase and mobile WebGL
+A separate Firebase backend and mobile WebGL build workflow are prepared. See [Firebase / phone-camera setup](Docs/FIREBASE_WEBGL.md). Deployment requires a NEW PhotoBooth Firebase project and Unity WebGL Build Support; these are not provisioned yet. Camera settings select the device sources exposed by the browser.
+
+## คู่มือเริ่มต้น Firebase ภาษาไทย
+ดู [คู่มือ Firebase และทดสอบมือถือ WebGL](Docs/FIREBASE_WEBGL_TH.md) สำหรับผู้ที่ยังไม่เคยตั้งค่า Firebase
+
+## เงื่อนไขล่าสุด: ใช้บริการฟรีเท่านั้น
+คู่มือ Blaze เดิมไม่ตรงกับข้อกำหนดล่าสุด ให้เริ่มจาก [ทางเลือกทดสอบฟรี](Docs/FREE_TESTING_TH.md) ก่อน ไม่ต้องเปิด Billing. Workers + KV เป็นทางเลือกที่เสนอและยังต้องปรับ backend ในโค้ดก่อน deploy.
+
+## ข้อกำหนดยืนยัน: Firebase และ Google Cloud Functions
+ใช้ [คู่มือภาษาไทยทีละขั้น](Docs/FIREBASE_WEBGL_TH.md) สำหรับ backend ตามข้อกำหนดงาน ส่วนแนวทาง Cloudflare ใน FREE_TESTING_TH.md เป็นข้อเสนอที่ไม่ได้เลือกใช้ Cloud Functions ออนไลน์ต้องเปิด Blaze/Billing; การอยู่ในโควตาฟรีไม่ใช่การรับประกันไม่มีค่าใช้จ่าย หากไม่ยอมรับ Billing ยัง deploy ชุดนี้ออนไลน์ไม่ได้
+
+## Capture first
+Flow is now Photo > Style > Save, with optional online QR. Save on this device works without an upload service in WebGL. See [capture-first flow](Docs/CAPTURE_FIRST.md).
+
+## Updated kiosk UX
+Default flow is Photo > Confirm > Style (zoom/drag) > QR. Open the explicit ?mode=mobile-test URL for the separate local-save test flow. See [Kiosk UX and validation](Docs/KIOSK_UX.md).
+
+## Current style-first AI demo
+Choose a style with concept previews before capture, confirm the photo, adjust the simulated result, then receive QR / print. Frames are no longer used in the visitor flow. See [AI style demo and printing](Docs/AI_STYLE_DEMO.md). This is an offline simulation, not an AI inference service.

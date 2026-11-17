@@ -123,3 +123,13 @@ InitTestScene*.unity*
 /Server/card-share/online-state.json
 /Server/card-share/online-test.log
 /ProjectSettings/PhotoBoothShare.json
+
+/BuildWebGL/
+/Server/card-share/node_modules/
+/Server/card-share/.env*
+/.firebase/
+/firebase-debug.log
+
+/Server/card-share/.secret.local
+
+/ProjectSettings/PhotoBoothShareBackups/

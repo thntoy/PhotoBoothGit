@@ -14,13 +14,32 @@ public sealed class BoothShareClient : IDisposable
 
     public IEnumerator UploadPhoto(byte[] pngBytes, Action<CardQrResponse> onSuccess, Action<string> onError)
     {
-        CardQrConfig configuration;
+        CardQrConfig configuration = null;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Only a short-lived origin-bound token reaches the browser, never the kiosk secret.
+        string configUrl = new Uri(new Uri(Application.absoluteURL), "/photo-api/web-config").AbsoluteUri;
+        activeRequest = UnityWebRequest.Get(configUrl);
+        activeRequest.timeout = 30;
+        yield return activeRequest.SendWebRequest();
+        if (activeRequest.result == UnityWebRequest.Result.Success)
+        {
+            try { configuration = JsonUtility.FromJson<CardQrConfig>(activeRequest.downloadHandler.text); }
+            catch (Exception) { }
+        }
+        Dispose();
+        if (configuration == null || configuration.Validate(false) != null)
+        {
+            onError("Online QR is not configured for this website. Use Save on this device instead.");
+            yield break;
+        }
+#else
         string configurationError;
         if (!TryLoadConfiguration(out configuration, out configurationError))
         {
             onError(configurationError);
             yield break;
         }
+#endif
 
         activeRequest = CreateUploadRequest(configuration, pngBytes);
         UnityWebRequestAsyncOperation uploadOperation;
