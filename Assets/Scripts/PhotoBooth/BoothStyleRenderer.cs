@@ -3,14 +3,27 @@ using UnityEngine;
 /// <summary>Offline visual effects for the AI demo. No AI inference or person replacement.</summary>
 public static class BoothStyleRenderer
 {
-    public static readonly string[] Names = { "Anime Travel", "Watercolor", "Pop Comic" };
+    public static readonly string[] Names =
+    {
+        "Anime Travel", "Watercolor", "Pop Comic", "Soft Pastel", "Clay Studio", "Retro Film"
+    };
     public static readonly string[] Descriptions =
     {
         "Soft colours and animated lines",
         "Paper texture and gentle painted tones",
-        "Bold outlines and playful colour"
+        "Bold outlines and playful colour",
+        "Soft light and peach-lavender tones",
+        "Smooth colour and soft sculpted shading",
+        "Warm highlights, faded shadows and film grain"
     };
-    private static readonly string[] PreviewPaths = { "Styles/Anime", "Styles/Watercolor", "Styles/Comic" };
+    private static readonly string[] PreviewPaths =
+    {
+        "Styles/Anime", "Styles/Watercolor", "Styles/Comic", "Styles/SoftPastel", "Styles/ClayStudio", "Styles/RetroFilm"
+    };
+    private static readonly Color PastelWash = new Color(1f, 0.87f, 0.95f);
+    private static readonly Color ClayTint = new Color(1f, 0.89f, 0.80f);
+    private static readonly Color FilmBlack = new Color(0.10f, 0.08f, 0.08f);
+    private static readonly Color FilmWhite = new Color(1f, 0.95f, 0.81f);
 
     public static Texture2D LoadConceptPreview(int styleIndex)
     {
@@ -55,6 +68,31 @@ public static class BoothStyleRenderer
             result = Color.Lerp(mixed, new Color(1f, 0.97f, 0.91f), 0.22f);
             float paper = ((x * 17 + y * 31) % 19) / 1900f;
             result *= 0.98f + paper;
+        }
+        else if (styleIndex == 3)
+        {
+            Color softened = (2f * original + right + above) / 4f;
+            Color muted = Color.Lerp(softened, Color.white * softened.grayscale, 0.22f);
+            result = Color.Lerp(muted, PastelWash, 0.24f);
+        }
+        else if (styleIndex == 4)
+        {
+            Color left = input[y * width + Mathf.Max(0, x - 1)];
+            Color below = input[Mathf.Max(0, y - 1) * width + x];
+            Color softened = (2f * original + left + right + above + below) / 6f;
+            Color clay = Color.Lerp(softened, Quantize(softened, 7), 0.42f);
+            float relief = Mathf.Clamp((left.grayscale - right.grayscale + above.grayscale - below.grayscale) * 0.21f,
+                -0.12f, 0.12f);
+            result = Color.Lerp(clay, ClayTint, 0.12f) + Color.white * relief;
+        }
+        else if (styleIndex == 5)
+        {
+            Color muted = Color.Lerp(original, Color.white * original.grayscale, 0.22f);
+            result = FilmBlack + (FilmWhite - FilmBlack) * muted;
+            // A deterministic grain pattern keeps a pixel consistent when the crop changes.
+            uint grain = unchecked((uint)x * 73856093u ^ (uint)y * 19349663u);
+            float noise = ((grain ^ (grain >> 13)) & 255u) / 255f - 0.5f;
+            result += Color.white * (noise * 0.085f);
         }
         else
         {

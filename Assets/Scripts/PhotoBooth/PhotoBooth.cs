@@ -6,7 +6,7 @@ using UnityEngine;
 
 /// <summary>
 /// Coordinates style selection, capture, confirmation, simulated styling and QR/print output.
-/// Screen drawing is in PhotoBoothView.cs; image processing and uploads have separate helpers.
+/// Canvas bindings are in PhotoBoothView.cs; image processing and uploads have separate helpers.
 /// </summary>
 public sealed partial class PhotoBooth : MonoBehaviour
 {
@@ -37,9 +37,12 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private const int RequestedCameraFps = 30;
     private const int MinimumCameraWidth = 16;
     private const int PhotoMaximumSize = 1280;
+    private const float PortraitAspect = 4f / 5f;
     private const int CountdownSeconds = 3;
+    private const float CameraStartupTimeoutSeconds = 8f;
 
     private WebCamTexture webcam;
+    private float cameraStartedAt;
     private WebCamDevice[] availableCameras = new WebCamDevice[0];
     private int selectedCameraIndex;
     private bool mirrorPhoto = true;
@@ -52,7 +55,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private int selectedStyleIndex;
     private bool isBusy;
     private int countdownRemaining;
-    private string statusMessage = "Starting camera...";
+    private string statusMessage = "Ready when you are.";
     [SerializeField] private UnityEngine.Events.UnityEvent<string> printFileRequested = new UnityEngine.Events.UnityEvent<string>();
     private readonly BoothShareClient shareClient = new BoothShareClient();
 
@@ -76,18 +79,18 @@ public sealed partial class PhotoBooth : MonoBehaviour
         lastInteractionTime = Time.unscaledTime;
     }
 
-    private void Start()
+    private void EnterCaptureScreen()
     {
-        statusMessage = "Ready when you are.";
-        if (!IsMobileTest && Application.HasUserAuthorization(UserAuthorization.WebCam))
+        currentStep = KioskStep.Capture;
+        statusMessage = "";
+        if (!CameraIsReady && !CameraIsStarting)
         {
-            RefreshCameras();
+            StartCoroutine(EnableCamera());
         }
     }
 
     private bool cameraPermissionPending;
     private bool cameraSettingsOpen;
-    private Vector2 cameraListScroll;
 
     private IEnumerator EnableCamera()
     {
@@ -96,11 +99,18 @@ public sealed partial class PhotoBooth : MonoBehaviour
             yield break;
         }
         cameraPermissionPending = true;
-        yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
-        cameraPermissionPending = false;
         if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
         {
-            statusMessage = "Camera permission denied. Allow camera access in browser settings and retry.";
+            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+        }
+        cameraPermissionPending = false;
+        if (currentStep != KioskStep.Capture)
+        {
+            yield break;
+        }
+        if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
+        {
+            statusMessage = "Allow camera access, then retry.";
             yield break;
         }
         RefreshCameras();
@@ -135,19 +145,26 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private void StartSelectedCamera()
     {
         StopCamera();
-        hasCameraFrame = false;
         if (availableCameras.Length == 0)
         {
-            statusMessage = "No webcam found. Connect one, then press Refresh cameras.";
+            statusMessage = "No camera found. Connect one, then retry.";
             return;
         }
 
         string cameraName = availableCameras[selectedCameraIndex].name;
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Let the mobile browser choose the camera stream dimensions for its orientation.
+        webcam = Application.isMobilePlatform
+            ? new WebCamTexture(cameraName)
+            : new WebCamTexture(cameraName, RequestedCameraWidth, RequestedCameraHeight, RequestedCameraFps);
+#else
         webcam = new WebCamTexture(cameraName, RequestedCameraWidth, RequestedCameraHeight, RequestedCameraFps);
+#endif
         webcam.Play();
+        cameraStartedAt = Time.realtimeSinceStartup;
         PlayerPrefs.SetString("PhotoBooth.CameraSource", cameraName);
         PlayerPrefs.Save();
-        statusMessage = "Waiting for webcam...";
+        statusMessage = "";
     }
 
     private void Update()
@@ -160,10 +177,13 @@ public sealed partial class PhotoBooth : MonoBehaviour
             hasCameraFrame = true;
             lastCameraFrameTime = Time.realtimeSinceStartup;
         }
+        RefreshCanvas();
     }
 
     private bool CameraIsReady => webcam != null && webcam.isPlaying && hasCameraFrame
         && Time.realtimeSinceStartup - lastCameraFrameTime < 2f;
+    private bool CameraIsStarting => cameraPermissionPending || (webcam != null && !hasCameraFrame
+        && Time.realtimeSinceStartup - cameraStartedAt < CameraStartupTimeoutSeconds);
 
     private IEnumerator CapturePhoto()
     {
@@ -209,7 +229,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
             webcam.videoVerticallyMirrored, mirrorPhoto, PhotoMaximumSize);
         SetCapturedPhoto(cameraPhoto);
         isBusy = false;
-        statusMessage = "Check your photo before continuing.";
+        statusMessage = "";
     }
 
     // Takes ownership of the full upright image. Keep it separate from the framed export.
@@ -220,7 +240,6 @@ public sealed partial class PhotoBooth : MonoBehaviour
         capturedSourceTexture = source;
         photoZoom = 1f;
         photoOffset = Vector2.zero;
-        draggingPhoto = false;
         DestroyTexture(ref resultTexture);
         currentStep = KioskStep.ConfirmPhoto;
         lastInteractionTime = Time.unscaledTime;
@@ -264,7 +283,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
         downloadExpiryUnixSeconds = 0;
         downloadPageUrl = "";
         Texture2D crop = BoothPhotoCrop.Create(simulatedStyleTexture, photoZoom, photoOffset,
-            forExport ? PhotoMaximumSize : 480, 0.8f);
+            forExport ? PhotoMaximumSize : 480, PortraitAspect);
         resultTexture = crop;
         photoPngBytes = forExport ? resultTexture.EncodeToPNG() : null;
     }
@@ -416,12 +435,9 @@ public sealed partial class PhotoBooth : MonoBehaviour
         photoPngBytes = null;
         photoZoom = 1f;
         photoOffset = Vector2.zero;
-        draggingPhoto = false;
         downloadExpiryUnixSeconds = 0;
         downloadPageUrl = "";
-        currentStep = KioskStep.Capture;
         lastInteractionTime = Time.unscaledTime;
-        statusMessage = "Ready for the next photo.";
     }
 
     private void UseTestImage()
@@ -437,7 +453,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
         Texture2D uprightPhoto = BoothCameraFrame.Upright(
             sourceImage.GetPixels32(), sourceImage.width, sourceImage.height, 0, false, false, PhotoMaximumSize);
         SetCapturedPhoto(uprightPhoto);
-        statusMessage = "Check your test photo before continuing.";
+        statusMessage = "";
     }
 
 #if UNITY_EDITOR
@@ -481,10 +497,11 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private void StartNewSession()
     {
         ResetPhoto();
+        StopCamera();
         cameraSettingsOpen = false;
+        stylePageIndex = 0;
         selectedStyleIndex = 0;
         currentStep = KioskStep.SelectStyle;
-        hasCameraFrame = false;
         statusMessage = "Ready for a new photo.";
     }
 
@@ -525,6 +542,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
 
     private void StopCamera()
     {
+        hasCameraFrame = false;
         if (webcam == null)
         {
             return;
