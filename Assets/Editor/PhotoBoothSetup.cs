@@ -187,16 +187,16 @@ public static class PhotoBoothSetup
 
         private void BuildAdjust(RectTransform page)
         {
-            Panel(page, "Crop Background", 132, 310, 816, 1050, Surface);
-            RawImage photo = Picture(page, "Portrait Crop", 172, 375, 736, 920);
+            Panel(page, "Crop Background", 64, 310, 952, 1190, Surface);
+            RawImage photo = Picture(page, "Portrait Crop", 64, 310, 952, 1190);
             photo.raycastTarget = true;
             Bind("editedPhoto", photo);
             Bind("photoDrag", photo.gameObject.AddComponent<EventTrigger>());
-            Bind("simulatedLabel", Label(page, "Style Applied", "", 64, 1368, 952, 60, 30, Ink));
-            Bind("zoomLabel", Label(page, "Zoom Value", "Zoom  1.0x", 64, 1435, 500, 45, 30, Ink, TextAnchor.MiddleLeft));
-            Bind("zoomOut", MakeButton(page, "Zoom Out", "-", 64, 1488, 96, 90));
-            Bind("zoomIn", MakeButton(page, "Zoom In", "+", 704, 1488, 96, 90));
-            Bind("resetCrop", MakeButton(page, "Reset Crop", "Reset", 824, 1488, 192, 90));
+            Bind("simulatedLabel", Label(page, "Style Applied", "", 64, 1750, 952, 60, 30, Ink));
+            Bind("zoomLabel", Label(page, "Zoom Value", "Zoom  1.0x", 816, 235, 200, 55, 30, Ink, TextAnchor.MiddleLeft));
+            Bind("zoomOut", MakeButton(page, "Zoom Out", "-", 64, 1518, 96, 90));
+            Bind("zoomIn", MakeButton(page, "Zoom In", "+", 704, 1518, 96, 90));
+            Bind("resetCrop", MakeButton(page, "Reset Crop", "Reset", 824, 1518, 192, 90));
             Bind("zoomSlider", ZoomSlider(page));
             Bind("adjustBack", Back(page));
             Bind("adjustOk", MakeButton(page, "OK", "OK", 580, 1628, 436, 116, true));
@@ -278,7 +278,7 @@ public static class PhotoBoothSetup
 
         private Slider ZoomSlider(RectTransform parent)
         {
-            RectTransform root = Place("Zoom Slider", parent, 176, 1488, 512, 90);
+            RectTransform root = Place("Zoom Slider", parent, 176, 1518, 512, 90);
             Image track = Panel(root, "Track", 0, 33, 512, 24, Border);
             track.raycastTarget = true;
             RectTransform area = Place("Handle Area", root, 25, 15, 462, 60);

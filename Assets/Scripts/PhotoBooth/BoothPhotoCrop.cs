@@ -13,12 +13,11 @@ public static class BoothPhotoCrop
             travelY * (1f + Mathf.Clamp(offset.y, -1f, 1f)), cropWidth, cropHeight);
     }
 
-    public static Texture2D Create(Texture2D source, float zoom, Vector2 offset, int maximumSize, float aspect = 1f)
+    public static Texture2D Create(Texture2D source, float zoom, Vector2 offset)
     {
-        Rect window = GetWindow(source.width, source.height, zoom, offset, aspect);
-        float scale = Mathf.Min(1f, maximumSize / Mathf.Max(window.width, window.height));
-        int outputWidth = Mathf.Max(1, Mathf.RoundToInt(window.width * scale));
-        int outputHeight = Mathf.Max(1, Mathf.RoundToInt(window.height * scale));
+        int outputWidth = source.width;
+        int outputHeight = source.height;
+        Rect window = GetWindow(outputWidth, outputHeight, zoom, offset, (float)outputWidth / outputHeight);
         Color32[] input = source.GetPixels32();
         Color32[] output = new Color32[outputWidth * outputHeight];
         for (int y = 0; y < outputHeight; y++)

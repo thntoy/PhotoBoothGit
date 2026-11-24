@@ -37,7 +37,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private const int RequestedCameraFps = 30;
     private const int MinimumCameraWidth = 16;
     private const int PhotoMaximumSize = 1280;
-    private const float PortraitAspect = 4f / 5f;
+    private float PhotoAspect => (float)simulatedStyleTexture.width / simulatedStyleTexture.height;
     private const int CountdownSeconds = 3;
     private const float CameraStartupTimeoutSeconds = 8f;
 
@@ -48,6 +48,55 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private bool mirrorPhoto = true;
 
     private Texture2D simulatedStyleTexture;
+    private Texture2D adjustedTexture;
+    private Texture2D EditingTexture => adjustedTexture != null ? adjustedTexture : simulatedStyleTexture;
+    private bool flipPhoto;
+    private readonly int[] colorSteps = new int[System.Enum.GetValues(typeof(EditScreen)).Length];
+    private bool HasColorEdits => Array.Exists(colorSteps, value => value != 0);
+
+    private void ClearPhotoAdjustments()
+    {
+        DestroyTexture(ref adjustedTexture);
+        flipPhoto = false;
+        Array.Clear(colorSteps, 0, colorSteps.Length);
+    }
+
+    private void ApplyPhotoAdjustments()
+    {
+        DestroyTexture(ref adjustedTexture);
+        if (flipPhoto || HasColorEdits)
+        {
+            int width = simulatedStyleTexture.width;
+            int height = simulatedStyleTexture.height;
+            Color32[] pixels = simulatedStyleTexture.GetPixels32();
+            for (int y = 0; y < height; y++)
+            {
+                if (flipPhoto) Array.Reverse(pixels, y * width, width);
+            }
+            if (HasColorEdits)
+            {
+                float shift = colorSteps[(int)EditScreen.Brightness] * 16;
+                float contrast = 1f + colorSteps[(int)EditScreen.Contrast] * 0.16f;
+                float saturation = 1f + colorSteps[(int)EditScreen.Saturation] / 3f;
+                float warmth = colorSteps[(int)EditScreen.Warmth] * 9;
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    Color32 color = pixels[i];
+                    float gray = color.r * 0.2126f + color.g * 0.7152f + color.b * 0.0722f;
+                    float baseValue = (gray - 128f) * contrast + 128f + shift;
+                    color.r = (byte)Mathf.Clamp(Mathf.RoundToInt(baseValue + (color.r - gray) * saturation * contrast + warmth), 0, 255);
+                    color.g = (byte)Mathf.Clamp(Mathf.RoundToInt(baseValue + (color.g - gray) * saturation * contrast), 0, 255);
+                    color.b = (byte)Mathf.Clamp(Mathf.RoundToInt(baseValue + (color.b - gray) * saturation * contrast - warmth), 0, 255);
+                    pixels[i] = color;
+                }
+            }
+            adjustedTexture = new Texture2D(width, height, TextureFormat.RGB24, false);
+            adjustedTexture.SetPixels32(pixels);
+            adjustedTexture.Apply();
+        }
+        KeepSessionActive();
+        RebuildStyledPhoto();
+    }
     private Texture2D capturedSourceTexture;
     private Texture2D resultTexture;
     private Texture2D qrTexture;
@@ -236,6 +285,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private void SetCapturedPhoto(Texture2D source)
     {
         DestroyTexture(ref capturedSourceTexture);
+        ClearPhotoAdjustments();
         DestroyTexture(ref simulatedStyleTexture);
         capturedSourceTexture = source;
         photoZoom = 1f;
@@ -248,18 +298,20 @@ public sealed partial class PhotoBooth : MonoBehaviour
     private IEnumerator SimulateSelectedStyle()
     {
         isBusy = true;
-        statusMessage = "Applying demo style — no AI service is being called.";
+        statusMessage = "Applying demo style โ€” no AI service is being called.";
         // Let the processing screen render before the CPU effect runs.
         yield return null;
         // A frame yield also works when the Editor's Game View is not focused.
         yield return null;
         try
         {
+            ClearPhotoAdjustments();
             DestroyTexture(ref simulatedStyleTexture);
             simulatedStyleTexture = BoothStyleRenderer.CreateDemo(capturedSourceTexture, selectedStyleIndex);
             RebuildStyledPhoto();
+            OpenEditScreen(EditScreen.Zoom);
             currentStep = KioskStep.AdjustPhoto;
-            statusMessage = "Drag or zoom to compose your demo portrait.";
+            statusMessage = "";
         }
         catch (Exception exception)
         {
@@ -282,10 +334,12 @@ public sealed partial class PhotoBooth : MonoBehaviour
         DestroyTexture(ref qrTexture);
         downloadExpiryUnixSeconds = 0;
         downloadPageUrl = "";
-        Texture2D crop = BoothPhotoCrop.Create(simulatedStyleTexture, photoZoom, photoOffset,
-            forExport ? PhotoMaximumSize : 480, PortraitAspect);
-        resultTexture = crop;
-        photoPngBytes = forExport ? resultTexture.EncodeToPNG() : null;
+        photoPngBytes = null;
+        if (forExport)
+        {
+            resultTexture = BoothPhotoCrop.Create(EditingTexture, photoZoom, photoOffset);
+            photoPngBytes = resultTexture.EncodeToPNG();
+        }
     }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -429,6 +483,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
         PhotoBooth_ClosePrintPhoto();
 #endif
         DestroyTexture(ref capturedSourceTexture);
+        ClearPhotoAdjustments();
         DestroyTexture(ref simulatedStyleTexture);
         DestroyTexture(ref resultTexture);
         DestroyTexture(ref qrTexture);
@@ -530,6 +585,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
         if (qrTexture != null && DateTimeOffset.UtcNow.ToUnixTimeSeconds() >= downloadExpiryUnixSeconds)
         {
             DestroyTexture(ref qrTexture);
+            OpenEditScreen(EditScreen.Zoom);
             currentStep = KioskStep.AdjustPhoto;
             statusMessage = "This download link has expired. Create a new QR to continue.";
         }
@@ -569,6 +625,7 @@ public sealed partial class PhotoBooth : MonoBehaviour
         PhotoBooth_ClosePrintPhoto();
 #endif
         DestroyTexture(ref capturedSourceTexture);
+        ClearPhotoAdjustments();
         DestroyTexture(ref simulatedStyleTexture);
         shareClient.Dispose();
         StopCamera();

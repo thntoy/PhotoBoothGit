@@ -126,9 +126,7 @@ public sealed partial class PhotoBooth
         operatorTools.SetActive(false);
 #endif
 
-        zoomSlider.onValueChanged.AddListener(SetZoom);
-        zoomOut.onClick.AddListener(() => SetZoom(photoZoom - 0.1f));
-        zoomIn.onClick.AddListener(() => SetZoom(photoZoom + 0.1f));
+        ArrangeAdjustmentTools();
         resetCrop.onClick.AddListener(ResetCrop);
         adjustBack.onClick.AddListener(() => currentStep = KioskStep.ConfirmPhoto);
         adjustOk.onClick.AddListener(ContinueToOutput);
@@ -157,6 +155,10 @@ public sealed partial class PhotoBooth
             KeepSessionActive();
         }
 
+        bool showHeader = currentStep != KioskStep.AdjustPhoto || cameraSettingsOpen;
+        SetVisible(boothTitle, showHeader);
+        SetVisible(headerRule, showHeader);
+        SetVisible(mobileTestBadge, showHeader && IsMobileTest);
         for (int index = 0; index < pages.Length; index++)
         {
             SetVisible(pages[index], !cameraSettingsOpen && index == (int)currentStep);
@@ -256,8 +258,8 @@ public sealed partial class PhotoBooth
         Vector2 size = quarterTurn ? new Vector2(area.height, area.width) : area.size;
         if (size.x <= 0 || size.y <= 0) return;
 
-        Rect crop = BoothPhotoCrop.GetWindow(webcam.width, webcam.height, 1f, Vector2.zero, size.x / size.y);
-        Rect uv = new Rect(crop.x / webcam.width, crop.y / webcam.height, crop.width / webcam.width, crop.height / webcam.height);
+        size = FitPhoto(size, webcam);
+        Rect uv = new Rect(0, 0, 1, 1);
         if (mirrorPhoto && !quarterTurn)
         {
             uv.x += uv.width;
@@ -331,7 +333,7 @@ public sealed partial class PhotoBooth
             WebCamDevice device = availableCameras[index];
             string facing = device.isFrontFacing ? "Front" : "Rear / External";
             string selected = index == selectedCameraIndex && webcam != null ? "Selected: " : "";
-            row.GetComponentInChildren<Text>().text = selected + facing + " — " + device.name;
+            row.GetComponentInChildren<Text>().text = selected + facing + " โ€” " + device.name;
             row.interactable = !cameraPermissionPending;
         }
         SetVisible(noCameras.gameObject, availableCameras.Length == 0);
@@ -342,19 +344,225 @@ public sealed partial class PhotoBooth
 
     private void RefreshPreview()
     {
-        ShowPortrait(photoPreview, capturedSourceTexture, true);
+        ShowPortrait(photoPreview, capturedSourceTexture);
         SetVisible(preparingPhoto.gameObject, isBusy);
         previewBack.interactable = !isBusy;
         previewOk.interactable = !isBusy && capturedSourceTexture != null;
     }
 
+    private enum EditScreen { Zoom, Brightness, Contrast, Saturation, Warmth }
+    private EditScreen editScreen;
+    private readonly EditScreen[] editTools = (EditScreen[])System.Enum.GetValues(typeof(EditScreen));
+    private Button[] toolButtons;
+    private RectTransform toolList;
+    private ScrollRect toolScroll;
+    private Button previousTools;
+    private Button nextTools;
+    private const int ToolWidth = 244;
+    private const int ToolGap = 18;
+    private RectTransform photoBackground;
+    private GameObject boothTitle;
+    private GameObject headerRule;
+    private Button flip;
+    private Text lowEndpoint;
+    private Text highEndpoint;
+
+    private void ArrangeAdjustmentTools()
+    {
+        Transform page = editedPhoto.transform.parent;
+        page.Find("Header Artwork").gameObject.SetActive(false);
+        page.Find("Subtitle").gameObject.SetActive(false);
+        simulatedLabel.gameObject.SetActive(false);
+        page.Find("Page Title").gameObject.SetActive(false);
+        boothTitle = page.parent.Find("Booth Title").gameObject;
+        headerRule = page.parent.Find("Header Rule").gameObject;
+        photoBackground = (RectTransform)page.Find("Crop Background");
+        toolList = new GameObject("Editing tools", typeof(RectTransform), typeof(UnityEngine.UI.Image),
+            typeof(RectMask2D), typeof(ScrollRect)).GetComponent<RectTransform>();
+        toolList.SetParent(page, false);
+        toolList.anchorMin = toolList.anchorMax = toolList.pivot = Vector2.up;
+        Place(toolList, 156, 1258, 768, 104);
+        toolList.GetComponent<Image>().color = Color.clear;
+        var content = new GameObject("Tool list", typeof(RectTransform), typeof(HorizontalLayoutGroup),
+            typeof(ContentSizeFitter)).GetComponent<RectTransform>();
+        content.SetParent(toolList, false);
+        content.anchorMin = Vector2.up;
+        content.anchorMax = Vector2.up;
+        content.pivot = Vector2.up;
+        content.sizeDelta = new Vector2(0, 104);
+        var layout = content.GetComponent<HorizontalLayoutGroup>();
+        layout.spacing = ToolGap;
+        layout.childForceExpandWidth = false;
+        content.GetComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        toolScroll = toolList.GetComponent<ScrollRect>();
+        toolScroll.viewport = toolList;
+        toolScroll.content = content;
+        toolScroll.vertical = false;
+        toolScroll.movementType = ScrollRect.MovementType.Clamped;
+        toolButtons = new Button[editTools.Length];
+        for (int i = 0; i < editTools.Length; i++)
+        {
+            EditScreen tool = editTools[i];
+            Button button = i == 0 ? zoomOut : i == 1 ? zoomIn : Instantiate(resetCrop, content);
+            toolButtons[i] = button;
+            AddTool(button, content, tool.ToString(), () => OpenEditScreen(tool));
+        }
+        previousTools = CreateScrollButton(page, "<", 64, -1);
+        nextTools = CreateScrollButton(page, ">", 936, 1);
+        toolScroll.onValueChanged.AddListener(position => UpdateScrollButtons(position.x));
+        UpdateScrollButtons(0f);
+        ConfigureButton(resetCrop, "Reset all", 806, 1512, 210);
+        flip = Instantiate(resetCrop, page);
+        ConfigureButton(flip, "Flip", 806, 1476, 210);
+        flip.onClick = new Button.ButtonClickedEvent();
+        flip.onClick.AddListener(() =>
+        {
+            flipPhoto = !flipPhoto;
+            photoOffset.x = -photoOffset.x;
+            ApplyPhotoAdjustments();
+        });
+        Place(zoomLabel.rectTransform, 64, 1390, 600, 66);
+        lowEndpoint = Instantiate(zoomLabel, page);
+        highEndpoint = Instantiate(zoomLabel, page);
+        lowEndpoint.fontSize = highEndpoint.fontSize = 28;
+        lowEndpoint.alignment = TextAnchor.MiddleLeft;
+        highEndpoint.alignment = TextAnchor.MiddleRight;
+        Place(lowEndpoint.rectTransform, 64, 1554, 440, 54);
+        Place(highEndpoint.rectTransform, 576, 1554, 440, 54);
+        Place((RectTransform)adjustBack.transform, 64, 1660, 300, 128);
+        adjustBack.transform.Find("U-turn Artwork").gameObject.SetActive(false);
+        Text back = adjustBack.GetComponentInChildren<Text>();
+        Place(back.rectTransform, 0, 0, 300, 128);
+        back.alignment = TextAnchor.MiddleCenter;
+        Place((RectTransform)adjustOk.transform, 404, 1660, 612, 128);
+        Place(adjustOk.GetComponentInChildren<Text>().rectTransform, 0, 0, 612, 128);
+        zoomSlider.minValue = 0;
+        zoomSlider.maxValue = 1;
+        zoomSlider.onValueChanged.AddListener(value =>
+        {
+            if (editScreen == EditScreen.Zoom) SetZoom(1f + value * 2f);
+            else
+            {
+                int step = Mathf.RoundToInt(value * 6f) - 3;
+                if (step == colorSteps[(int)editScreen]) return;
+                colorSteps[(int)editScreen] = step;
+                ApplyPhotoAdjustments();
+            }
+        });
+        OpenEditScreen(EditScreen.Zoom);
+    }
+
+    private static void ConfigureButton(Button button, string caption, int x, int y, int width)
+    {
+        Place((RectTransform)button.transform, x, y, width, 72);
+        Text label = button.GetComponentInChildren<Text>();
+        Place(label.rectTransform, 12, 0, width - 24, 72);
+        label.text = caption;
+        label.fontSize = 30;
+    }
+
+    private static void Place(RectTransform rect, int x, int y, int width, int height)
+    {
+        rect.anchoredPosition = new Vector2(x, -y);
+        rect.sizeDelta = new Vector2(width, height);
+    }
+
+    private static void AddTool(Button button, RectTransform content, string title, UnityEngine.Events.UnityAction open)
+    {
+        button.transform.SetParent(content, false);
+        button.gameObject.AddComponent<LayoutElement>().preferredWidth = ToolWidth;
+        Text label = button.GetComponentInChildren<Text>();
+        label.text = title;
+        label.alignment = TextAnchor.MiddleCenter;
+        Place(label.rectTransform, 8, 0, ToolWidth - 16, 104);
+        button.onClick.AddListener(open);
+    }
+
+    private Button CreateScrollButton(Transform page, string caption, int x, int direction)
+    {
+        Button button = Instantiate(resetCrop, page);
+        ConfigureButton(button, caption, x, 1274, 80);
+        button.onClick = new Button.ButtonClickedEvent();
+        button.onClick.AddListener(() =>
+        {
+            float travel = toolScroll.content.rect.width - toolList.rect.width;
+            if (travel <= 0) return;
+            toolScroll.StopMovement();
+            toolScroll.horizontalNormalizedPosition = Mathf.Clamp01(toolScroll.horizontalNormalizedPosition
+                + direction * toolList.rect.width / travel);
+        });
+        return button;
+    }
+
+    private void UpdateScrollButtons(float position)
+    {
+        previousTools.interactable = position > 0.001f;
+        nextTools.interactable = position < 0.999f;
+    }
+
+    private void OpenEditScreen(EditScreen screen)
+    {
+        editScreen = screen;
+        SyncAdjustmentSlider();
+
+        const int height = 1190;
+        Place(photoBackground, 64, 32, 952, height);
+        RectTransform photo = editedPhoto.rectTransform;
+        photo.pivot = Vector2.one * 0.5f;
+        photo.anchoredPosition = new Vector2(540, -32 - height / 2f);
+        photoSlots[editedPhoto] = new Vector2(952, height);
+        Place((RectTransform)resetCrop.transform, 806, 1380, 210, 72);
+        editedPhoto.raycastTarget = screen == EditScreen.Zoom;
+        bool zoom = screen == EditScreen.Zoom;
+        flip.gameObject.SetActive(zoom);
+        int width = zoom ? 680 : 952;
+        Place((RectTransform)zoomSlider.transform, 64, 1468, width, 90);
+        Place((RectTransform)zoomSlider.transform.Find("Track"), 0, 33, width, 24);
+        Place((RectTransform)zoomSlider.transform.Find("Handle Area"), 25, 15, width - 50, 60);
+        lowEndpoint.gameObject.SetActive(!zoom);
+        highEndpoint.gameObject.SetActive(!zoom);
+        (lowEndpoint.text, highEndpoint.text) = screen switch
+        {
+            EditScreen.Brightness => ("Darker", "Brighter"),
+            EditScreen.Contrast => ("Softer", "Stronger"),
+            EditScreen.Saturation => ("Black & white", "Vivid"),
+            EditScreen.Warmth => ("Cooler", "Warmer"),
+            _ => ("", "")
+        };
+        for (int i = 0; i < editTools.Length; i++)
+            toolButtons[i].interactable = editTools[i] != screen;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(toolScroll.content);
+        float travel = toolScroll.content.rect.width - toolList.rect.width;
+        if (travel > 0)
+        {
+            float left = System.Array.IndexOf(editTools, screen) * (ToolWidth + ToolGap);
+            float offset = Mathf.Clamp(toolScroll.horizontalNormalizedPosition * travel,
+                left + ToolWidth - toolList.rect.width, left);
+            toolScroll.StopMovement();
+            toolScroll.horizontalNormalizedPosition = Mathf.Clamp01(offset / travel);
+        }
+        adjustOk.GetComponentInChildren<Text>().text = "Get photo";
+    }
+
+    private void SyncAdjustmentSlider()
+    {
+        zoomSlider.SetValueWithoutNotify(editScreen == EditScreen.Zoom ? (photoZoom - 1f) / 2f : (colorSteps[(int)editScreen] + 3) / 6f);
+    }
+
     private void RefreshAdjustment()
     {
-        ShowPortrait(editedPhoto, resultTexture, false);
-        zoomSlider.SetValueWithoutNotify(photoZoom);
-        zoomLabel.text = $"Zoom  {photoZoom:0.0}x";
-        simulatedLabel.text = "SIMULATED / " + BoothStyleRenderer.Names[selectedStyleIndex];
-        adjustOk.interactable = resultTexture != null && !isBusy;
+        resetCrop.gameObject.SetActive(flipPhoto || HasColorEdits || photoZoom > 1f);
+        ShowPortrait(editedPhoto, EditingTexture);
+        if (EditingTexture != null)
+        {
+            Rect window = BoothPhotoCrop.GetWindow(EditingTexture.width, EditingTexture.height, photoZoom, photoOffset, PhotoAspect);
+            editedPhoto.uvRect = new Rect(window.x / EditingTexture.width, window.y / EditingTexture.height,
+                window.width / EditingTexture.width, window.height / EditingTexture.height);
+        }
+        SyncAdjustmentSlider();
+        zoomLabel.text = editScreen == EditScreen.Zoom ? $"Zoom: {photoZoom:0.0}x" : $"{editScreen}: {colorSteps[(int)editScreen]:+0;-0;0}";
+
+        adjustOk.interactable = EditingTexture != null && !isBusy;
     }
 
     private void SetZoom(float zoom)
@@ -367,6 +575,7 @@ public sealed partial class PhotoBooth
 
     private void ResetCrop()
     {
+        ClearPhotoAdjustments();
         photoZoom = 1f;
         photoOffset = Vector2.zero;
         RebuildStyledPhoto();
@@ -383,7 +592,7 @@ public sealed partial class PhotoBooth
             return;
         }
         Vector2 delta = current - previous;
-        Rect crop = BoothPhotoCrop.GetWindow(simulatedStyleTexture.width, simulatedStyleTexture.height, photoZoom, photoOffset, PortraitAspect);
+        Rect crop = BoothPhotoCrop.GetWindow(simulatedStyleTexture.width, simulatedStyleTexture.height, photoZoom, photoOffset, PhotoAspect);
         float travelX = (simulatedStyleTexture.width - crop.width) / 2f;
         float travelY = (simulatedStyleTexture.height - crop.height) / 2f;
         if (travelX > 0) photoOffset.x = Mathf.Clamp(photoOffset.x - delta.x * crop.width / area.rect.width / travelX, -1f, 1f);
@@ -403,7 +612,7 @@ public sealed partial class PhotoBooth
 
         if (IsMobileTest)
         {
-            ShowPortrait(mobilePhoto, resultTexture, false);
+            ShowPortrait(mobilePhoto, resultTexture);
             saveButton.interactable = !isBusy && resultTexture != null;
             mobileStatus.text = statusMessage;
             return;
@@ -412,8 +621,8 @@ public sealed partial class PhotoBooth
         bool hasQr = qrTexture != null;
         SetVisible(qrPanel, hasQr);
         SetVisible(uploadFallback, !hasQr);
-        ShowPortrait(qrImage, qrTexture, false);
-        ShowPortrait(fallbackPhoto, resultTexture, false);
+        ShowPortrait(qrImage, qrTexture);
+        ShowPortrait(fallbackPhoto, resultTexture);
         uploadMessage.text = isBusy ? "Preparing your QR..." : "Online download is unavailable. You can still print.";
         SetVisible(retryQr.gameObject, !isBusy);
         printButton.interactable = !isBusy && resultTexture != null;
@@ -432,16 +641,28 @@ public sealed partial class PhotoBooth
             : statusMessage;
     }
 
-    private static void ShowPortrait(RawImage image, Texture texture, bool crop)
+    private readonly System.Collections.Generic.Dictionary<RawImage, Vector2> photoSlots = new System.Collections.Generic.Dictionary<RawImage, Vector2>();
+
+    private static Vector2 FitPhoto(Vector2 bounds, Texture texture)
+    {
+        return new Vector2(texture.width, texture.height) * Mathf.Min(bounds.x / texture.width, bounds.y / texture.height);
+    }
+
+    private void ShowPortrait(RawImage image, Texture texture)
     {
         SetVisible(image.gameObject, texture != null);
         image.texture = texture;
-        if (!crop || texture == null) return;
-        Rect area = image.rectTransform.rect;
-        if (area.width <= 0 || area.height <= 0) return;
-        Rect window = BoothPhotoCrop.GetWindow(texture.width, texture.height, 1f, Vector2.zero, area.width / area.height);
-        image.uvRect = new Rect(window.x / texture.width, window.y / texture.height,
-            window.width / texture.width, window.height / texture.height);
+        if (texture == null) return;
+        RectTransform rect = image.rectTransform;
+        if (!photoSlots.TryGetValue(image, out Vector2 bounds))
+        {
+            bounds = rect.rect.size;
+            photoSlots.Add(image, bounds);
+            rect.anchoredPosition += Vector2.Scale(Vector2.one * 0.5f - rect.pivot, bounds);
+            rect.pivot = Vector2.one * 0.5f;
+        }
+        rect.sizeDelta = FitPhoto(bounds, texture);
+        image.uvRect = new Rect(0, 0, 1, 1);
     }
 
     private static void SetVisible(GameObject target, bool value)
