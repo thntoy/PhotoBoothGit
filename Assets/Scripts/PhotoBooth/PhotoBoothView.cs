@@ -87,6 +87,10 @@ public sealed partial class PhotoBooth
     [SerializeField] private Text outputCountdown;
     [SerializeField] private Text mobileCountdown;
 
+    [SerializeField] private RawImage shutterIcon;
+    [SerializeField] private Texture2D cameraGlyph;
+    [SerializeField] private Texture2D retryGlyph;
+
     private void Start()
     {
         stylePreviews = new Texture2D[BoothStyleRenderer.Names.Length];
@@ -127,6 +131,7 @@ public sealed partial class PhotoBooth
 #endif
 
         ArrangeAdjustmentTools();
+
         resetCrop.onClick.AddListener(ResetCrop);
         adjustBack.onClick.AddListener(() => currentStep = KioskStep.ConfirmPhoto);
         adjustOk.onClick.AddListener(ContinueToOutput);
@@ -237,6 +242,7 @@ public sealed partial class PhotoBooth
         SetVisible(captureCountdown.transform.parent.gameObject, countdownRemaining > 0);
         if (countdownRemaining > 0 && captureCountdown.text != countdownRemaining.ToString())
             captureCountdown.text = countdownRemaining.ToString();
+        shutterIcon.texture = ready || starting ? cameraGlyph : retryGlyph;
         shutterLabel.text = ready || starting ? "Take photo" : "Retry";
         shutter.interactable = !isBusy && !starting;
         captureBack.interactable = !isBusy;
@@ -429,13 +435,6 @@ public sealed partial class PhotoBooth
         highEndpoint.alignment = TextAnchor.MiddleRight;
         Place(lowEndpoint.rectTransform, 64, 1554, 440, 54);
         Place(highEndpoint.rectTransform, 576, 1554, 440, 54);
-        Place((RectTransform)adjustBack.transform, 64, 1660, 300, 128);
-        adjustBack.transform.Find("U-turn Artwork").gameObject.SetActive(false);
-        Text back = adjustBack.GetComponentInChildren<Text>();
-        Place(back.rectTransform, 0, 0, 300, 128);
-        back.alignment = TextAnchor.MiddleCenter;
-        Place((RectTransform)adjustOk.transform, 404, 1660, 612, 128);
-        Place(adjustOk.GetComponentInChildren<Text>().rectTransform, 0, 0, 612, 128);
         zoomSlider.minValue = 0;
         zoomSlider.maxValue = 1;
         zoomSlider.onValueChanged.AddListener(value =>

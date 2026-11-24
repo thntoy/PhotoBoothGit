@@ -38,9 +38,59 @@ public static class PhotoBoothSetup
         }
 
         new CanvasBuilder(booth).Build();
+        AuthorActionIcons(booth);
         EditorSceneManager.MarkSceneDirty(scene);
         if (!EditorSceneManager.SaveScene(scene))
             throw new InvalidOperationException("Unable to save the booth scene.");
+    }
+
+    public static void AuthorActionIcons(PhotoBooth booth)
+    {
+        var bindings = new SerializedObject(booth);
+        void SetIcon(string field, string glyph, bool back = false)
+        {
+            var button = (Button)bindings.FindProperty(field).objectReferenceValue;
+            Transform existing = button.transform.Find("Action Icon") ?? button.transform.Find("U-turn Artwork");
+            var icon = existing != null ? existing.GetComponent<RawImage>() :
+                new GameObject("Action Icon", typeof(RectTransform), typeof(RawImage)).GetComponent<RawImage>();
+            icon.transform.SetParent(button.transform, false);
+            icon.name = "Action Icon";
+            icon.texture = Resources.Load<Texture2D>("KioskTemplate/Action" + glyph);
+            Text label = button.GetComponentInChildren<Text>(true);
+            icon.color = label.color;
+            icon.raycastTarget = false;
+            RectTransform rect = icon.rectTransform;
+            float anchorX = field == "adjustBack" ? 0.24f : (back ? 0.15f : 0.85f);
+            rect.anchorMin = rect.anchorMax = new Vector2(anchorX, 0.5f);
+            rect.pivot = Vector2.one * 0.5f;
+            rect.sizeDelta = new Vector2(48, 48);
+            rect.anchoredPosition = Vector2.zero;
+            rect.localRotation = Quaternion.Euler(0, 0, back ? 180 : 0);
+            if (field == "shutter") bindings.FindProperty("shutterIcon").objectReferenceValue = icon;
+            label.alignment = TextAnchor.MiddleCenter;
+            RectTransform caption = label.rectTransform;
+            caption.anchorMin = Vector2.zero;
+            caption.anchorMax = Vector2.one;
+            caption.pivot = new Vector2(0.5f, 0.5f);
+            caption.offsetMin = caption.offsetMax = Vector2.zero;
+            if (field == "previewBack") label.text = "Retake photo";
+            if (field == "previewOk") label.text = "Use photo";
+        }
+        SetIcon("continueButton", "Forward");
+        SetIcon("captureBack", "Forward", true);
+        SetIcon("settingsBack", "Forward", true);
+        SetIcon("adjustBack", "Forward", true);
+        SetIcon("previewBack", "Reload");
+        SetIcon("shutter", "Shutter");
+        SetIcon("previewOk", "Check");
+        SetIcon("adjustOk", "Photo");
+        SetIcon("printButton", "Printer");
+        SetIcon("doneButton", "Check");
+        SetIcon("retryQr", "Reload");
+        SetIcon("finishTest", "Check");
+        bindings.FindProperty("cameraGlyph").objectReferenceValue = Resources.Load<Texture2D>("KioskTemplate/ActionShutter");
+        bindings.FindProperty("retryGlyph").objectReferenceValue = Resources.Load<Texture2D>("KioskTemplate/ActionReload");
+        bindings.ApplyModifiedPropertiesWithoutUndo();
     }
 
     internal static void AddStyleSelectionOutline(Button card, bool selected)
@@ -198,8 +248,12 @@ public static class PhotoBoothSetup
             Bind("zoomIn", MakeButton(page, "Zoom In", "+", 704, 1518, 96, 90));
             Bind("resetCrop", MakeButton(page, "Reset Crop", "Reset", 824, 1518, 192, 90));
             Bind("zoomSlider", ZoomSlider(page));
-            Bind("adjustBack", Back(page));
-            Bind("adjustOk", MakeButton(page, "OK", "OK", 580, 1628, 436, 116, true));
+            Button back = Back(page, 360);
+            var backRect = (RectTransform)back.transform;
+            backRect.anchoredPosition = new Vector2(64, -1660);
+            backRect.sizeDelta = new Vector2(360, 128);
+            Bind("adjustBack", back);
+            Bind("adjustOk", MakeButton(page, "OK", "Get photo", 464, 1660, 552, 128, true));
         }
 
         private void BuildOutput(RectTransform output)
